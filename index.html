@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Menu Maker</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- QRCode.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <!-- html2canvas and jsPDF for PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+
+        /* Phone Frame CSS (For Editor Preview) */
+        .phone-frame {
+            border: 12px solid #1f2937;
+            border-radius: 2.5rem;
+            position: relative;
+            background: #ffffff;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            max-width: 380px;
+            width: 100%;
+            margin: 0 auto;
+            height: 700px;
+            display: flex;
+            flex-direction: column;
+        }
+        .phone-notch {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 25px;
+            background: #1f2937;
+            border-bottom-left-radius: 15px;
+            border-bottom-right-radius: 15px;
+            z-index: 10;
+        }
+
+        /* Menu specific styles */
+        .menu-scroll-area {
+            overflow-y: auto;
+            flex-grow: 1;
+            padding-bottom: 2rem;
+            background-color: #f9fafb;
+        }
+        
+        .menu-header-ui {
+            background: linear-gradient(135deg, var(--primary-color, #DC2626), var(--secondary-color, #F97316));
+            color: white;
+            padding: 3rem 1.5rem 2rem 1.5rem;
+            text-align: center;
+            border-bottom-left-radius: 20px;
+            border-bottom-right-radius: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Print styles */
+        @media print {
+            body * { visibility: hidden; }
+            #print-qr-section, #print-qr-section * { visibility: visible; }
+            #print-qr-section { position: absolute; left: 0; top: 0; width: 100%; text-align: center; padding: 20px; }
+        }
+
+        /* Animations */
+        .toast-enter { animation: slideIn 0.3s ease-out forwards; }
+        @keyframes slideIn {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .fade-in { animation: fadeIn 0.5s ease-in forwards; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800 h-screen overflow-hidden flex flex-col">
+
+    <!-- ========================================== -->
+    <!-- VIEW 1: MAKER / EDITOR VIEW (Desktop App)  -->
+    <!-- ========================================== -->
+    <div id="app-view" class="flex flex-col lg:flex-row h-full w-full">
+        
+        <!-- LEFT PANEL: EDITOR -->
+        <div class="w-full lg:w-5/12 xl:w-1/3 bg-white h-full border-r border-gray-200 flex flex-col shadow-lg z-10">
+            <!-- Header -->
+            <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-white">
+                <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-red-600 to-orange-500">
+                    <i class="fa-solid fa-qrcode mr-2 text-red-600"></i>Menu Maker
+                </h1>
+                <div class="flex gap-2">
+                    <button onclick="loadSampleData()" class="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded hover:bg-indigo-100 transition tooltip" title="Load sample menu">
+                        <i class="fa-solid fa-flask"></i> Sample
+                    </button>
+                    <button onclick="clearAllData()" class="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded hover:bg-red-100 transition tooltip" title="Clear all data">
+                        <i class="fa-solid fa-trash"></i> Clear
+                    </button>
+                </div>
+            </div>
+
+            <!-- Scrollable Editor Content -->
+            <div class="p-5 overflow-y-auto flex-grow bg-gray-50">
+                
+                <!-- Restaurant Details -->
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-5">
+                    <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3"><i class="fa-solid fa-store mr-2"></i>Restaurant Info</h2>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Restaurant Name*</label>
+                            <input type="text" id="rest-name" oninput="updateMenuData()" placeholder="e.g. The Gourmet Kitchen" class="w-full text-sm p-2 border border-gray-300 rounded focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Upload Logo (Optional)</label>
+                            <input type="file" id="rest-logo" accept="image/*" onchange="handleLogoUpload(event)" class="w-full text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-red-50 file:text-red-600 hover:file:bg-red-100">
+                        </div>
+                        <div class="flex gap-4 pt-1">
+                            <div class="flex-1">
+                                <label class="block text-xs font-medium text-gray-500 mb-1">Primary Color</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="color" id="color-primary" value="#DC2626" oninput="updateMenuData()" class="h-8 w-8 rounded cursor-pointer border-0 p-0">
+                                    <span class="text-xs text-gray-400" id="hex-primary">#DC2626</span>
+                                </div>
+                            </div>
+                            <div class="flex-1">
+                                <label class="block text-xs font-medium text-gray-500 mb-1">Secondary Color</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="color" id="color-secondary" value="#F97316" oninput="updateMenuData()" class="h-8 w-8 rounded cursor-pointer border-0 p-0">
+                                    <span class="text-xs text-gray-400" id="hex-secondary">#F97316</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Add Dish Form -->
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-5">
+                    <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3"><i class="fa-solid fa-utensils mr-2"></i>Add Dish</h2>
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="col-span-2">
+                                <label class="block text-xs font-medium text-gray-500 mb-1">Dish Name*</label>
+                                <input type="text" id="dish-name" placeholder="e.g. Garlic Butter Naan" class="w-full text-sm p-2 border border-gray-300 rounded focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 mb-1">Price (₹)*</label>
+                                <input type="number" id="dish-price" placeholder="0.00" class="w-full text-sm p-2 border border-gray-300 rounded focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 mb-1">Category*</label>
+                                <select id="dish-category" class="w-full text-sm p-2 border border-gray-300 rounded focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none bg-white">
+                                    <option value="Starters">Starters 🥗</option>
+                                    <option value="Main Course">Main Course 🍛</option>
+                                    <option value="Desserts">Desserts 🍰</option>
+                                    <option value="Beverages">Beverages 🍹</option>
+                                    <option value="Specials">Specials ⭐</option>
+                                </select>
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs font-medium text-gray-500 mb-1">Description</label>
+                                <textarea id="dish-desc" rows="2" placeholder="Brief description of the ingredients..." class="w-full text-sm p-2 border border-gray-300 rounded focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none"></textarea>
+                            </div>
+                        </div>
+                        <button onclick="addDish()" class="w-full bg-gray-800 text-white text-sm font-semibold py-2 rounded hover:bg-gray-700 transition">
+                            <i class="fa-solid fa-plus mr-1"></i> Add to Menu
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Added Dishes List -->
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                    <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3"><i class="fa-solid fa-list mr-2"></i>Menu Items (<span id="item-count">0</span>)</h2>
+                    <div id="dish-list" class="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        <!-- Dishes injected here -->
+                        <div class="text-xs text-center text-gray-400 py-4 italic">No dishes added yet.</div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Footer Action -->
+            <div class="p-4 bg-white border-t border-gray-200">
+                <button onclick="generateQRAndMenu()" class="w-full bg-gradient-to-r from-red-600 to-orange-500 text-white font-bold py-3 rounded-lg shadow-md hover:shadow-lg transform transition hover:-translate-y-0.5">
+                    <i class="fa-solid fa-wand-magic-sparkles mr-2"></i> Generate Menu & QR Code
+                </button>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: PREVIEW & EXPORT -->
+        <div class="w-full lg:w-7/12 xl:w-2/3 bg-gray-200 h-full overflow-y-auto flex flex-col relative">
+            
+            <!-- Tabs -->
+            <div class="flex justify-center pt-6 pb-4 sticky top-0 z-20">
+                <div class="bg-gray-300 p-1 rounded-lg inline-flex shadow-inner">
+                    <button id="tab-preview" onclick="switchTab('preview')" class="px-6 py-2 text-sm font-semibold rounded-md bg-white shadow text-gray-800 transition">Live Preview</button>
+                    <button id="tab-qr" onclick="switchTab('qr')" class="px-6 py-2 text-sm font-semibold rounded-md text-gray-600 hover:text-gray-800 transition">QR Code & Export</button>
+                </div>
+            </div>
+
+            <!-- Live Preview Phone Frame -->
+            <div id="view-preview" class="flex-grow flex items-center justify-center p-4">
+                <div class="phone-frame">
+                    <div class="phone-notch"></div>
+                    <div id="menu-preview-content" class="menu-scroll-area">
+                        <!-- Generated preview goes here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- QR & Export Container -->
+            <div id="view-qr" class="hidden flex-grow items-center justify-center p-4">
+                <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 text-center">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-2">Your QR Code is Ready!</h2>
+                    <p class="text-sm text-gray-500 mb-6">Scan to view the live digital menu.</p>
+                    
+                    <div id="print-qr-section" class="bg-gray-50 p-6 rounded-xl border-2 border-dashed border-gray-300 mb-6 flex flex-col items-center justify-center relative">
+                        <div id="qrcode" class="bg-white p-3 rounded-lg shadow-sm"></div>
+                        <h3 id="qr-rest-name" class="mt-4 font-bold text-lg text-gray-800">Restaurant Name</h3>
+                        <p class="text-xs text-gray-500 mt-1">Scan to view our menu</p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <button onclick="downloadQR()" class="bg-gray-800 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-900 transition flex items-center justify-center">
+                            <i class="fa-solid fa-download mr-2"></i> PNG Image
+                        </button>
+                        <button onclick="printQR()" class="bg-gray-100 text-gray-800 py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-200 transition flex items-center justify-center border border-gray-300">
+                            <i class="fa-solid fa-print mr-2"></i> Print Poster
+                        </button>
+                    </div>
+                    
+                    <div class="border-t border-gray-200 pt-4 mt-2">
+                        <p class="text-xs text-gray-500 font-medium mb-3 uppercase tracking-wider">Share Digital Menu</p>
+                        <div class="flex gap-2">
+                            <button onclick="copyMenuLink()" class="flex-1 bg-blue-50 text-blue-600 py-2 rounded-lg text-sm font-medium hover:bg-blue-100 transition">
+                                <i class="fa-solid fa-link mr-1"></i> Copy Link
+                            </button>
+                            <button onclick="shareWhatsApp()" class="flex-1 bg-green-50 text-green-600 py-2 rounded-lg text-sm font-medium hover:bg-green-100 transition">
+                                <i class="fa-brands fa-whatsapp mr-1"></i> WhatsApp
+                            </button>
+                            <button onclick="downloadPDF()" class="flex-1 bg-red-50 text-red-600 py-2 rounded-lg text-sm font-medium hover:bg-red-100 transition">
+                                <i class="fa-solid fa-file-pdf mr-1"></i> PDF
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ========================================== -->
+    <!-- VIEW 2: CUSTOMER MENU (Only accessible via QR)-->
+    <!-- ========================================== -->
+    <div id="customer-view" class="hidden h-screen w-full bg-gray-100 overflow-y-auto">
+        <!-- Centered Mobile Wrapper -->
+        <div class="w-full max-w-lg mx-auto bg-white min-h-screen shadow-2xl flex flex-col relative">
+            
+            <!-- Menu content generated dynamically here -->
+            <div id="customer-menu-content" class="flex-grow"></div>
+            
+            <!-- Footer -->
+            <div class="py-6 bg-gray-50 text-center border-t border-gray-200 mt-auto">
+                <i class="fa-solid fa-qrcode text-gray-300 text-2xl mb-2"></i>
+                <p class="text-[11px] text-gray-400 uppercase tracking-widest font-semibold">Digital Menu securely hosted</p>
+            </div>
+            
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2"></div>
+
+    <script>
+        /** STATE MANAGEMENT **/
+        let menuData = {
+            restaurantName: "",
+            logo: "", 
+            primaryColor: "#DC2626",
+            secondaryColor: "#F97316",
+            dishes:[]
+        };
+        let qrCodeInstance = null;
+        let generatedUrl = "";
+
+        /** INITIALIZATION **/
+        window.onload = () => {
+            // 1. Check if URL has a hash (This means it was scanned via QR Code)
+            const hash = window.location.hash.substring(1);
+            if (hash) {
+                try {
+                    const decoded = decodeData(hash);
+                    if (decoded && decoded.restaurantName) {
+                        menuData = decoded;
+                        initCustomerView(); // Switch entirely to customer menu
+                        return; // Stop here, do not load the editor
+                    } else {
+                        throw new Error("Data incomplete");
+                    }
+                } catch (e) {
+                    alert("Invalid or expired QR Code link. Redirecting to Menu Maker.");
+                    window.location.hash = ""; // Clear hash
+                    window.location.reload(); // Reload to editor
+                }
+            }
+            
+            // 2. Otherwise, load the Editor Mode (Check LocalStorage for drafts)
+            const saved = localStorage.getItem('menuDraft');
+            if (saved) {
+                menuData = JSON.parse(saved);
+                populateEditorFields();
+            }
+            renderEditorPreview();
+            renderDishList();
+        };
+
+        /** DATA ENCODING FOR SHAREABLE URL **/
+        // Compresses JSON to base64 so it can be shared via URL hash without a database
+        function encodeData(data) {
+            return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+        }
+        function decodeData(encoded) {
+            return JSON.parse(decodeURIComponent(escape(atob(encoded))));
+        }
+
+        /** CUSTOMER VIEWER MODE (ONLY FOR SCANNED QRs) **/
+        function initCustomerView() {
+            // Completely hide the editor app
+            document.getElementById('app-view').style.display = 'none';
+            document.body.classList.remove('overflow-hidden'); // Allow full scrolling
+            
+            // Show the customer view wrapper
+            const viewer = document.getElementById('customer-view');
+            viewer.classList.remove('hidden');
+
+            // Set browser title to Restaurant name
+            document.title = `${menuData.restaurantName} - Digital Menu`;
+
+            // Render the full-screen menu
+            const container = document.getElementById('customer-menu-content');
+            
+            // Generate Header
+            let html = `
+                <div class="menu-header-ui" style="--primary-color: ${menuData.primaryColor}; --secondary-color: ${menuData.secondaryColor};">
+                    ${menuData.logo ? `<img src="${menuData.logo}" alt="Logo" class="w-24 h-24 mx-auto rounded-full border-4 border-white shadow-lg mb-4 object-cover bg-white">` : ''}
+                    <h1 class="text-3xl font-bold tracking-wide">${menuData.restaurantName}</h1>
+                    <p class="text-sm text-white/80 mt-2 uppercase tracking-widest font-semibold">Digital Menu</p>
+                </div>
+                <div class="p-5 space-y-8 pb-10 bg-gray-50/50">
+            `;
+
+            if (menuData.dishes.length === 0) {
+                html += `<p class="text-center text-gray-500 mt-10 italic">No items available currently.</p></div>`;
+                container.innerHTML = html;
+                return;
+            }
+
+            // Group Dishes by Category
+            const grouped = menuData.dishes.reduce((acc, dish) => {
+                if (!acc[dish.category]) acc[dish.category] = [];
+                acc[dish.category].push(dish);
+                return acc;
+            }, {});
+
+            // Sort categories in standard logical order
+            const order =["Starters", "Main Course", "Desserts", "Beverages", "Specials"];
+            const categories = Object.keys(grouped).sort((a, b) => {
+                let ia = order.findIndex(c => a.includes(c));
+                let ib = order.findIndex(c => b.includes(c));
+                if(ia === -1) ia = 99; if(ib === -1) ib = 99;
+                return ia - ib;
+            });
+
+            // Build Dish Cards
+            categories.forEach(cat => {
+                html += `
+                    <div class="fade-in">
+                        <div class="flex items-center mb-5">
+                            <h3 class="text-xl font-bold text-gray-800">${cat}</h3>
+                            <div class="ml-4 flex-grow h-px bg-gray-300"></div>
+                        </div>
+                        <div class="space-y-4">
+                `;
+                
+                grouped[cat].forEach(dish => {
+                    html += `
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between relative overflow-hidden" style="border-left: 4px solid ${menuData.primaryColor};">
+                            <div class="pr-4 w-3/4">
+                                <h4 class="text-base font-bold text-gray-900">${dish.name}</h4>
+                                ${dish.description ? `<p class="text-sm text-gray-500 mt-1 leading-snug">${dish.description}</p>` : ''}
+                            </div>
+                            <div class="w-1/4 text-right">
+                                <span class="inline-block font-bold text-lg" style="color: ${menuData.primaryColor}">₹${dish.price}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += `</div></div>`;
+            });
+
+            html += `</div>`; 
+            container.innerHTML = html;
+        }
+
+
+        /** ========================================== **/
+        /** EDITOR & MAKER LOGIC BELOW                 **/
+        /** ========================================== **/
+
+        function updateMenuData() {
+            menuData.restaurantName = document.getElementById('rest-name').value || "Restaurant Name";
+            menuData.primaryColor = document.getElementById('color-primary').value;
+            menuData.secondaryColor = document.getElementById('color-secondary').value;
+            
+            document.getElementById('hex-primary').innerText = menuData.primaryColor.toUpperCase();
+            document.getElementById('hex-secondary').innerText = menuData.secondaryColor.toUpperCase();
+            
+            saveDraft();
+            renderEditorPreview();
+        }
+
+        function handleLogoUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Compress image to keep URL hash size small for QR
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (e) => {
+                const img = new Image();
+                img.src = e.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 150; 
+                    const scaleSize = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH;
+                    canvas.height = img.height * scaleSize;
+                    
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    
+                    menuData.logo = canvas.toDataURL('image/jpeg', 0.8);
+                    saveDraft();
+                    renderEditorPreview();
+                };
+            };
+        }
+
+        function addDish() {
+            const nameInput = document.getElementById('dish-name');
+            const priceInput = document.getElementById('dish-price');
+            const catInput = document.getElementById('dish-category');
+            const descInput = document.getElementById('dish-desc');
+
+            if (!nameInput.value || !priceInput.value) {
+                showToast("Please enter dish name and price", "error");
+                return;
+            }
+
+            const newDish = {
+                id: Date.now().toString(),
+                name: nameInput.value,
+                price: parseFloat(priceInput.value),
+                category: catInput.value,
+                description: descInput.value
+            };
+
+            menuData.dishes.push(newDish);
+            
+            nameInput.value = '';
+            priceInput.value = '';
+            descInput.value = '';
+            nameInput.focus();
+
+            saveDraft();
+            renderEditorPreview();
+            renderDishList();
+            showToast("Dish added successfully!");
+        }
+
+        function removeDish(id) {
+            menuData.dishes = menuData.dishes.filter(d => d.id !== id);
+            saveDraft();
+            renderEditorPreview();
+            renderDishList();
+        }
+
+        function renderDishList() {
+            const list = document.getElementById('dish-list');
+            const count = document.getElementById('item-count');
+            list.innerHTML = '';
+            count.innerText = menuData.dishes.length;
+
+            if (menuData.dishes.length === 0) {
+                list.innerHTML = '<div class="text-xs text-center text-gray-400 py-4 italic">No dishes added yet.</div>';
+                return;
+            }
+
+            menuData.dishes.forEach(dish => {
+                const item = document.createElement('div');
+                item.className = "flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-100 hover:bg-gray-100 transition";
+                item.innerHTML = `
+                    <div class="overflow-hidden">
+                        <p class="text-xs font-semibold text-gray-800 truncate">${dish.name}</p>
+                        <p class="text-[10px] text-gray-500">${dish.category} • ₹${dish.price}</p>
+                    </div>
+                    <button onclick="removeDish('${dish.id}')" class="text-red-400 hover:text-red-600 p-1 rounded">
+                        <i class="fa-solid fa-trash-can text-sm"></i>
+                    </button>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        // Renders the tiny preview inside the phone frame in the editor
+        function renderEditorPreview() {
+            const container = document.getElementById('menu-preview-content');
+            
+            let html = `
+                <div class="menu-header-ui" style="--primary-color: ${menuData.primaryColor}; --secondary-color: ${menuData.secondaryColor}; padding-top: 2.5rem; padding-bottom: 1.5rem;">
+                    ${menuData.logo ? `<img src="${menuData.logo}" class="w-16 h-16 mx-auto rounded-full border-2 border-white shadow-md mb-2 object-cover bg-white">` : ''}
+                    <h2 class="text-xl font-bold tracking-wide">${menuData.restaurantName || "Restaurant Name"}</h2>
+                    <p class="text-[10px] text-white/80 mt-1 uppercase tracking-widest">Digital Menu</p>
+                </div>
+                <div class="p-4 space-y-4">
+            `;
+
+            if (menuData.dishes.length === 0) {
+                html += `
+                    <div class="text-center text-gray-400 text-sm mt-8">
+                        <i class="fa-solid fa-plate-wheat text-3xl mb-2 opacity-50"></i>
+                        <p>Add dishes to see preview.</p>
+                    </div></div>`;
+                container.innerHTML = html;
+                return;
+            }
+
+            const grouped = menuData.dishes.reduce((acc, dish) => {
+                if (!acc[dish.category]) acc[dish.category] =[];
+                acc[dish.category].push(dish);
+                return acc;
+            }, {});
+
+            const order =["Starters", "Main Course", "Desserts", "Beverages", "Specials"];
+            const categories = Object.keys(grouped).sort((a, b) => {
+                let ia = order.findIndex(c => a.includes(c));
+                let ib = order.findIndex(c => b.includes(c));
+                if(ia === -1) ia = 99; if(ib === -1) ib = 99;
+                return ia - ib;
+            });
+
+            categories.forEach(cat => {
+                html += `
+                    <div class="mb-4">
+                        <div class="flex items-center mb-3">
+                            <h3 class="text-sm font-bold text-gray-800">${cat}</h3>
+                            <div class="ml-2 flex-grow h-px bg-gray-200"></div>
+                        </div>
+                        <div class="space-y-2">
+                `;
+                
+                grouped[cat].forEach(dish => {
+                    html += `
+                        <div class="bg-white p-2 rounded-lg shadow-sm border border-gray-100 flex justify-between" style="border-left: 3px solid ${menuData.primaryColor};">
+                            <div class="pr-2 w-3/4">
+                                <h4 class="text-xs font-bold text-gray-800 leading-tight">${dish.name}</h4>
+                                ${dish.description ? `<p class="text-[10px] text-gray-500 mt-0.5 line-clamp-1">${dish.description}</p>` : ''}
+                            </div>
+                            <div class="w-1/4 text-right">
+                                <span class="inline-block font-bold text-xs" style="color: ${menuData.primaryColor}">₹${dish.price}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += `</div></div>`;
+            });
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        /** QR AND EXPORT GENERATION **/
+        function generateQRAndMenu() {
+            if (!menuData.restaurantName || menuData.dishes.length === 0) {
+                showToast("Please add a restaurant name and at least one dish.", "error");
+                return;
+            }
+
+            // Create shareable URL based on current host URL + encoded payload
+            const encodedData = encodeData(menuData);
+            generatedUrl = window.location.href.split('#')[0] + '#' + encodedData;
+
+            // Generate QR Code
+            const qrContainer = document.getElementById('qrcode');
+            qrContainer.innerHTML = '';
+            
+            try {
+                qrCodeInstance = new QRCode(qrContainer, {
+                    text: generatedUrl,
+                    width: 200,
+                    height: 200,
+                    colorDark : "#111827",
+                    colorLight : "#ffffff",
+                    correctLevel : QRCode.CorrectLevel.L // Low error correction to handle larger URLs
+                });
+
+                document.getElementById('qr-rest-name').innerText = menuData.restaurantName;
+                
+                showToast("Menu Generated Successfully!");
+                switchTab('qr');
+            } catch(e) {
+                showToast("Menu data too large for QR. Try removing the logo.", "error");
+            }
+        }
+
+        function downloadQR() {
+            const qrSection = document.getElementById('print-qr-section');
+            html2canvas(qrSection, { scale: 3 }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `${menuData.restaurantName}-QRCode.png`;
+                link.href = canvas.toDataURL("image/png");
+                link.click();
+            });
+        }
+
+        function printQR() {
+            window.print();
+        }
+
+        async function downloadPDF() {
+            showToast("Generating PDF... please wait.");
+            const { jsPDF } = window.jspdf;
+            const menuElement = document.getElementById('menu-preview-content');
+            
+            const originalHeight = menuElement.style.height;
+            const originalOverflow = menuElement.style.overflow;
+            menuElement.style.height = 'max-content';
+            menuElement.style.overflow = 'visible';
+
+            const canvas = await html2canvas(menuElement, { scale: 2, useCORS: true });
+            
+            menuElement.style.height = originalHeight;
+            menuElement.style.overflow = originalOverflow;
+
+            const imgData = canvas.toDataURL('image/png');
+            
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+            
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            pdf.save(`${menuData.restaurantName}-Menu.pdf`);
+            showToast("PDF Downloaded!");
+        }
+
+        function copyMenuLink() {
+            navigator.clipboard.writeText(generatedUrl).then(() => {
+                showToast("Link copied to clipboard!");
+            });
+        }
+
+        function shareWhatsApp() {
+            const text = `Check out the digital menu for *${menuData.restaurantName}*!\n\n${generatedUrl}`;
+            window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+        }
+
+        /** UTILITIES **/
+        function switchTab(tab) {
+            const vPreview = document.getElementById('view-preview');
+            const vQR = document.getElementById('view-qr');
+            const tPreview = document.getElementById('tab-preview');
+            const tQR = document.getElementById('tab-qr');
+
+            if (tab === 'preview') {
+                vPreview.classList.remove('hidden');
+                vQR.classList.add('hidden');
+                tPreview.classList.replace('bg-transparent', 'bg-white');
+                tPreview.classList.replace('text-gray-600', 'text-gray-800');
+                tPreview.classList.add('shadow');
+                
+                tQR.classList.replace('bg-white', 'bg-transparent');
+                tQR.classList.replace('text-gray-800', 'text-gray-600');
+                tQR.classList.remove('shadow');
+            } else {
+                vPreview.classList.add('hidden');
+                vQR.classList.remove('hidden');
+                tQR.classList.replace('bg-transparent', 'bg-white');
+                tQR.classList.replace('text-gray-600', 'text-gray-800');
+                tQR.classList.add('shadow');
+                
+                tPreview.classList.replace('bg-white', 'bg-transparent');
+                tPreview.classList.replace('text-gray-800', 'text-gray-600');
+                tPreview.classList.remove('shadow');
+            }
+        }
+
+        function saveDraft() {
+            localStorage.setItem('menuDraft', JSON.stringify(menuData));
+        }
+
+        function clearAllData() {
+            if(confirm("Are you sure you want to clear all menu data?")) {
+                menuData = {
+                    restaurantName: "", logo: "", primaryColor: "#DC2626", secondaryColor: "#F97316", dishes:[]
+                };
+                localStorage.removeItem('menuDraft');
+                populateEditorFields();
+                renderEditorPreview();
+                renderDishList();
+                showToast("Menu cleared.");
+            }
+        }
+
+        function loadSampleData() {
+            menuData = {
+                restaurantName: "The Rusty Spoon",
+                logo: "",
+                primaryColor: "#0f766e",
+                secondaryColor: "#14b8a6",
+                dishes:[
+                    { id: "1", name: "Crispy Calamari", price: 250, category: "Starters", description: "Lightly dusted calamari served with garlic aioli." },
+                    { id: "2", name: "Bruschetta", price: 180, category: "Starters", description: "Toasted baguette with tomatoes, basil, and balsamic." },
+                    { id: "3", name: "Truffle Mushroom Risotto", price: 450, category: "Main Course", description: "Creamy arborio rice with wild mushrooms and truffle oil." },
+                    { id: "4", name: "Grilled Salmon", price: 650, category: "Main Course", description: "Atlantic salmon with asparagus and hollandaise." },
+                    { id: "5", name: "Tiramisu", price: 220, category: "Desserts", description: "Classic Italian coffee-flavored dessert." },
+                    { id: "6", name: "Mojito", price: 150, category: "Beverages", description: "Mint, lime, rum, and club soda." }
+                ]
+            };
+            populateEditorFields();
+            renderEditorPreview();
+            renderDishList();
+            showToast("Sample data loaded!");
+        }
+
+        function populateEditorFields() {
+            document.getElementById('rest-name').value = menuData.restaurantName;
+            document.getElementById('color-primary').value = menuData.primaryColor;
+            document.getElementById('color-secondary').value = menuData.secondaryColor;
+            document.getElementById('hex-primary').innerText = menuData.primaryColor.toUpperCase();
+            document.getElementById('hex-secondary').innerText = menuData.secondaryColor.toUpperCase();
+        }
+
+        function showToast(message, type = "success") {
+            const toast = document.createElement('div');
+            const icon = type === "success" ? '<i class="fa-solid fa-circle-check text-green-500"></i>' : '<i class="fa-solid fa-circle-exclamation text-red-500"></i>';
+            toast.className = `toast-enter flex items-center gap-3 bg-gray-900 text-white px-4 py-3 rounded-lg shadow-lg text-sm font-medium z-50`;
+            toast.innerHTML = `${icon} ${message}`;
+            
+            const container = document.getElementById('toast-container');
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(100%)';
+                toast.style.transition = 'all 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
